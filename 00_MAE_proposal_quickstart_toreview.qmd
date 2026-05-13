@@ -12,7 +12,7 @@ format:
     theme: paper
     embed-resources: true
 execute:
-  cache: true
+  cache: refresh
 project:
   execute-dir: project
 editor: 
@@ -21,7 +21,9 @@ editor:
 number-sections: true
 ---
 
-## MultiAssayExperiment introduction
+# MultiAssayExperiment
+
+## Introduction
 
 In the FRESH project, data from multi-omics experiments were generated across
 different biological compartments and timepoints, with each assay producing
@@ -61,9 +63,12 @@ tables, and a placeholder for derived analytical variables.
 this stage or registered as future assays?*
 :::
 
-## Loading libraries and data
+## Set up
+
+### Loading libraries and data
 
 ```{r}
+#| warning: false
 library("MultiAssayExperiment")
 library(stringr)
 library(readxl)
@@ -102,16 +107,32 @@ manifest <- read_xlsx(
 )|> as.data.frame()
 ```
 
-::: callout-important
-## Data
+```{r}
+survey_raw <- readRDS(str_c(get_data_dir(),"REDCap exports/raw_export_20240730/study_surveys.rds"))
 
+acutes = read_excel(str_c(get_data_dir(), "Acutes tables/_2024.9_FRESH Acute data_DR 22 Feb 2025.xlsx"), sheet = "Acute List (all)") %>% rename(study_id = `PID...2`) %>% 
+  mutate(study_id = factor(str_remove_all(study_id, "-")))
+```
+
+
+::: callout-important
 *Are there any more data available so far that could be included at this stage
-?*
+?
+Should there be some kind of cleaning there for the acutes for instance ?*
+add the cohort/enrollment group (from where ?)
+is it : $clean_blood_mucosal
+[1] "group"
+
+$clean_blood_mucosal_with_subjective_cleaning
+[1] "group"
+
+$survey_raw
+[1] "blood_mucosal_group_number" "group"   
 :::
 
-## Harmonising participant identifiers
+### Harmonising participant identifiers
 
-### Reference crosswalk
+#### Reference crosswalk
 
 Participant identifiers were recorded inconsistently across data collection
 instruments. The canonical identifier labelled `pid` is `clean_study_id` from
@@ -144,7 +165,7 @@ known_unresolvable_pids <- c(
 )
 ```
 
-### Harmonisation of pid
+#### Harmonisation of pid
 
 The function below looks for a `study_id` column in any data frame, joins it to
 the crosswalk, and replaces it with the canonical `pid`. If a `pid` column
@@ -253,8 +274,6 @@ have been entered in millilitres and are multiplied by 1000 accordingly. The raw
 value is retained as `volume_raw`.
 
 ::: callout-warning
-## Review the changes
-
 Do you agree with the fixes done here ? is it important at this stage ?
 :::
 
@@ -330,7 +349,7 @@ if (nrow(unparseable) > 0) {
 
 ```
 
-### Computing study_day
+#### Computing study_day
 
 Rather than relying on nominal visit dates alone for temporal ordering, we
 compute `study_day` as the number of days since each participant's earliest
@@ -343,7 +362,7 @@ global_anchors <- manifest_clean |>
   summarise(anchor_date = min(sample_date, na.rm = TRUE), .groups = "drop")
 ```
 
-### Constructing the primary key
+#### Constructing the primary key
 
 The primary key uniquely identifies each row of `colData`. We use
 `pid_visitcode_studyday` rather than `pid` alone (not unique across visits) or
@@ -389,7 +408,7 @@ n_distinct(sample_date)) \|\> filter(n_dates \> 1) \|\> arrange(pid, visit_code,
 sample_date) \|\> select(pid, visit_code, sample_date, sample_type, lims_number,
 n_vials) \|\> print(n = Inf)
 
-### Enriching colData with visit codes
+#### Adding visit codes to ColData
 
 Where available, visit codes from the cleaned visit-code pipeline are used to
 fill or confirm the `visit_code` field. This handles cases where the LIMS
@@ -429,6 +448,56 @@ message(
   n_distinct(col_data_df$pid), " participants"
 )
 ```
+
+#### Adding LIMS number to ColData 
+
+
+```{r}
+
+lims_per_occasion <- manifest_clean |>
+  left_join(global_anchors, by = "pid") |>
+  mutate(
+    study_day   = as.integer(sample_date - anchor_date),
+    primary_key = case_when(
+      !is.na(visit_code) ~ paste(pid, visit_code, study_day, sep = "_"),
+      TRUE               ~ paste(pid, study_day, sep = "_")
+    )
+  ) |>
+  group_by(primary_key) |>
+  summarise(
+    lims_numbers  = list(unique(lims_number)),
+    sample_types  = list(unique(sample_type)),
+    n_vials_total = n(),
+    .groups = "drop"
+  )
+
+col_data_df <- col_data_df |>
+  as.data.frame() |>
+  tibble::rownames_to_column("primary_key") |>
+  left_join(lims_per_occasion, by = "primary_key") |>
+  tibble::column_to_rownames("primary_key") |>
+  mutate(
+    lims_numbers = I(lims_numbers),   # I() protects list-columns from being
+    sample_types = I(sample_types)    # silently dropped by DataFrame()
+  ) |>
+  DataFrame()
+
+stopifnot(
+  "LIMS join duplicated colData rows" =
+    nrow(col_data_df) == n_distinct(rownames(col_data_df)),
+  "lims_numbers missing from colData" =
+    "lims_numbers" %in% names(col_data_df),
+  "DataFrame conversion dropped rows" =
+    nrow(col_data_df) > 0
+)
+
+message(
+  "colData enriched with LIMS inventory: ",
+  nrow(col_data_df), " rows, ",
+  sum(lengths(col_data_df$lims_numbers)), " total vials registered"
+)
+```
+
 
 ## Building the **SampleMap**
 
@@ -522,9 +591,8 @@ and versioned alongside the MAE object itself.
 ```{r}
 mae <- MultiAssayExperiment(
   experiments = ExperimentList(),
-  colData     = col_data_df,
   sampleMap   = DataFrame(
-    assay   = character(),
+    assay   = factor(character()),
     primary = character(),
     colname = character()
   ),
@@ -534,7 +602,7 @@ mae <- MultiAssayExperiment(
       source_file    = "FRESH HPP127 Samples-Comprehensive-01 October 2025.xlsx",
       raw            = manifest_clean,
       global_anchors = global_anchors,
-      sample_map     = sample_map_df       # pre-computed linkage, not yet active
+      sample_map     = sample_map_df
     ),
     clinical_vars = list(
       baseline_intake            = clean_baseline_intake,
@@ -544,32 +612,43 @@ mae <- MultiAssayExperiment(
       baseline_2_validation      = validation_baseline_2,
       blood_mucosal              = clean_blood_mucosal,
       blood_mucosal_clean        = clean_blood_mucosal_with_subjective_cleaning,
-      risk_3mo                   = clean_3mo_risk
+      risk_3mo                   = clean_3mo_risk,
+      survey_raw                 = survey_raw,
+      acutes                     = acutes
     ),
     reference_id_vars = list(
       crosswalk               = id_crosswalk,
       visit_codes_and_dates   = cleaned_visit_codes_and_dates,
       unresolved_ids          = unresolved_ids,
       known_unresolvable_pids = known_unresolvable_pids
-    ),
-    calculated_variables = list()   # populated as derived variables are added
+    )
   )
 )
 
+# Assign colData after construction to bypass harmonisation against empty sampleMap
+slot(mae, "colData") <- col_data_df
+
 stopifnot(
+  "colData not assigned correctly" =
+    nrow(colData(mae)) == nrow(col_data_df),
+  "colData rownames lost" =
+    !is.null(rownames(colData(mae))),
   "metadata slots missing" =
     all(c("mae_creation_date", "sample_manifest",
-          "clinical_vars", "reference_id_vars",
-          "calculated_variables") %in% names(metadata(mae)))
+          "clinical_vars", "reference_id_vars")
+        %in% names(metadata(mae)))
 )
 
 message(
   "MAE skeleton assembled successfully",
   "\n  colData    : ", nrow(colData(mae)), " rows across ",
                        n_distinct(colData(mae)$pid), " participants",
-  "\n  assays     : ", length(experiments(mae)), " (empty — to be populated)",
-  "\n  sampleMap  : empty (pre-computed linkage stored in ",
-                       "metadata$sample_manifest$sample_map, ",
+  "\n  LIMS vials : ", sum(lengths(colData(mae)$lims_numbers)),
+                       " registered across colData rows",
+  "\n  assays     : ", length(experiments(mae)),
+                       " (empty — to be populated as data arrive)",
+  "\n  sampleMap  : empty constructor; pre-computed linkage in ",
+                       "metadata$sample_manifest$sample_map (",
                        nrow(metadata(mae)$sample_manifest$sample_map), " rows)",
   "\n  metadata   : ", length(metadata(mae)), " slots: ",
                        paste(names(metadata(mae)), collapse = ", ")
@@ -580,9 +659,9 @@ message(
 #saveRDS(mae, str_c(get_data_dir(), "derived_data/mae_skeleton.rds"))
 ```
 
-## Notes and remarks
+# Notes and remarks
 
-### On replicates
+## On replicates
 
 I wondered how to handled duplicated; so taking an exemple of one sample run
 twice for 16S.
@@ -600,7 +679,7 @@ assay   primary                      colname
 
 This is explicitly supported by the MAE spec : duplicate primary values (here`pid`x`visit_code`x`visit_day`) in the `sampleMap` represent replicates. Both columns appear in the assay matrix, both point to the same `colData` row. When subset by participant or visit, we get both replicates, and we keep all information in the MAE until we know how to handle them (average, take best quality, run sensitivity analysis).
 
-### On LIMS numbers
+## On LIMS numbers
 
 I wondered how they will be handled, it depends on the assays data structure I guess and hopefully it willlook like the following : 
 ```         
@@ -611,7 +690,7 @@ colData row  →  sampleMap$colname  →  assay matrix column
 
 For each assay data received, verify the column names to match the `lims_number`.
 
-### Next steps : adding assays as data arrive
+## Next steps : adding assays as data arrive
 
 When a new assay matrix becomes available (e.g. 16S feature table, metagenomic
 count matrix), the procedure is as follows.
