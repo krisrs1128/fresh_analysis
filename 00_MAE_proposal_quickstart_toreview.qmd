@@ -1,0 +1,764 @@
+---
+title: "MAE building suggestion"
+author: "Lisa Arnalot"
+date: last-modified
+date-format: "[Last Updated on] MMMM DD, YYYY"
+format: 
+  html:
+    code-fold: true
+    toc: true
+    toc-depth: 5
+    toc-location: left
+    theme: paper
+    embed-resources: true
+execute:
+  cache: refresh
+project:
+  execute-dir: project
+editor: 
+  markdown: 
+    wrap: 80
+number-sections: true
+---
+
+# MultiAssayExperiment
+
+## Introduction
+
+In the FRESH project, data from multi-omics experiments were generated across
+different biological compartments and timepoints, with each assay producing
+matrices of different dimensions. A flat data structure cannot accommodate this
+heterogeneity without duplication or loss of linkage. We therefore adopt the
+`MultiAssayExperiment` (MAE) framework proposed by Ramos et al. (2017), which
+was designed precisely for this use case.
+
+The MAE enforces a strict separation between three layers of information:
+
+**ExperimentList** holds the assay data themselves — one entry per omics
+modality (e.g. `$16S`, `$metagenomics`, `$proteomics`). Each entry is a
+`SummarizedExperiment` or matrix whose columns correspond to physical samples.
+At this stage the list is empty; assays will be added progressively as
+sequencing and analysis outputs become available.
+
+**colData** is the primary sample registry — one row per biological unit, here
+defined as one participant (`pid`) at one sampling occasion
+(`visit_code × study_day`). It is the anchor to which all assay data are
+ultimately linked. The row names of `colData` serve as the primary keys of the
+entire structure.
+
+**sampleMap** is a three-column linking table (`assay`, `primary`, `colname`)
+that maps each column of each assay matrix back to exactly one row of `colData`.
+It cannot be populated until assay matrices are available, because the `assay`
+column must contain names present in the `ExperimentList`, and the `colname`
+column must match the actual column names used in each matrix. The LIMS manifest
+is stored in `metadata` to make this mapping possible once data arrive.
+
+**metadata** is a free-form named list used to store supplementary information
+that does not fit the row-per-sample structure of `colData`. Here it holds the
+raw LIMS manifest, global date anchors, CRF data frames, reference identifier
+tables, and a placeholder for derived analytical variables.
+
+::: callout-note
+*Are there additional data sources that should be incorporated into this MAE at
+this stage or registered as future assays?*
+:::
+
+## Set up
+
+### Loading libraries and data
+
+```{r}
+#| warning: false
+library("MultiAssayExperiment")
+library(stringr)
+library(readxl)
+library(dplyr)
+library(lubridate)
+library(purrr)
+```
+
+```{r}
+tmp <- fs::dir_map("R", source)
+```
+
+Pre-cleaned data objects produced by upstream cleaning scripts (fresh_surveys
+repository) are loaded from `derived_data/Clean/`.
+
+```{r}
+files <- list.files(
+  path       = str_c(get_data_dir(), "derived_data/Clean/"),
+  pattern    = "\\.rds$",
+  full.names = TRUE
+)
+
+for (f in files) {
+  name <- tools::file_path_sans_ext(basename(f))
+  assign(name, readRDS(f), envir = .GlobalEnv)
+}
+
+```
+
+The LIMS manifest is loaded, it is a record of all physical samples collected in
+the FRESH project.
+
+```{r}
+manifest <- read_xlsx(
+  str_c(get_data_dir(), "HPP_LIMS/FRESH HPP127 Samples-Comprehensive-01 October 2025.xlsx")
+)|> as.data.frame()
+```
+
+```{r}
+survey_raw <- readRDS(str_c(get_data_dir(),"REDCap exports/raw_export_20240730/study_surveys.rds"))
+
+acutes = read_excel(str_c(get_data_dir(), "Acutes tables/_2024.9_FRESH Acute data_DR 22 Feb 2025.xlsx"), sheet = "Acute List (all)") %>% rename(study_id = `PID...2`) %>% 
+  mutate(study_id = factor(str_remove_all(study_id, "-")))
+```
+
+
+::: callout-important
+*Are there any more data available so far that could be included at this stage
+?
+Should there be some kind of cleaning there for the acutes for instance ?*
+add the cohort/enrollment group (from where ?)
+is it : $clean_blood_mucosal
+[1] "group"
+
+$clean_blood_mucosal_with_subjective_cleaning
+[1] "group"
+
+$survey_raw
+[1] "blood_mucosal_group_number" "group"   
+:::
+
+### Harmonising participant identifiers
+
+#### Reference crosswalk
+
+Participant identifiers were recorded inconsistently across data collection
+instruments. The canonical identifier labelled `pid` is `clean_study_id` from
+`cleaned_visit_codes_and_dates`, which was established during the visit-code
+cleaning pipeline. A crosswalk table maps every raw identifier variant to its
+canonical form:
+
+```{r}
+id_crosswalk <- cleaned_visit_codes_and_dates |>
+  select(raw_study_id, clean_study_id) |>
+  distinct()
+
+# checking for duplicates
+stopifnot(
+  "Duplicate raw_study_id found in crosswalk" =
+    id_crosswalk |> count(raw_study_id) |> filter(n > 1) |> nrow() == 0
+)
+
+# flagging known issues from cleaning-visit_codes.Rmd
+known_unresolvable_pids <- c(
+  # canonical formatted versions (appear in validation dfs)
+  "127-33-2455-2639",  # confirmed typo, deleted from visit cleaning pipeline
+  "127-33-2708-2833",  # confirmed typo, deleted from visit cleaning pipeline
+  "127-33-4-17-0000",  # malformed ID, non-standard format
+  "127-33- 3831-0000", # malformed ID, contains whitespace
+  # raw unformatted versions (appear in baseline dfs — same participants,
+  # absent from crosswalk so harmonise_pid could not convert them)
+  "1273324552639",     # raw form of 127-33-2455-2639
+  "1273327082833"      # raw form of 127-33-2708-2833
+)
+```
+
+#### Harmonisation of pid
+
+The function below looks for a `study_id` column in any data frame, joins it to
+the crosswalk, and replaces it with the canonical `pid`. If a `pid` column
+already exists, it is validated against the crosswalk. In both cases, unmatched
+values fall back to their raw form and trigger a warning so that new
+discrepancies are flagged.
+
+```{r}
+harmonise_pid <- function(df) {
+  if ("study_id" %in% names(df)) {
+    df <- df |>
+      mutate(study_id = as.character(study_id)) |>
+      left_join(id_crosswalk, by = c("study_id" = "raw_study_id")) |>
+      mutate(pid = coalesce(clean_study_id, study_id)) |>
+      select(-study_id, -clean_study_id)
+  } else if ("pid" %in% names(df)) {
+    # verify existing pid matches canonical clean_study_id
+    unmatched <- unique(
+      df$pid[!(df$pid %in% id_crosswalk$clean_study_id)]
+    )
+    if (length(unmatched) > 0) {
+      warning(
+        "harmonise_pid: pid column exists but ",
+        length(unmatched),
+        " value(s) not found in crosswalk — check these:\n  ",
+        paste(unmatched, collapse = "\n  "),
+        call. = FALSE
+      )
+    }
+  }
+  df
+}
+
+clean_3mo_risk <- clean_3mo_risk |>
+  select(-uid)
+
+clean_baseline_2                               <- harmonise_pid(clean_baseline_2)
+clean_baseline_intake                          <- harmonise_pid(clean_baseline_intake)
+clean_baseline_intake_with_subjective_cleaning <- harmonise_pid(clean_baseline_intake_with_subjective_cleaning)
+clean_blood_mucosal                            <- harmonise_pid(clean_blood_mucosal)
+clean_blood_mucosal_with_subjective_cleaning   <- harmonise_pid(clean_blood_mucosal_with_subjective_cleaning)
+validation_baseline_intake                     <- harmonise_pid(validation_baseline_intake)
+validation_baseline_2                          <- harmonise_pid(validation_baseline_2)
+clean_3mo_risk                                 <- harmonise_pid(clean_3mo_risk)
+```
+
+Unmatched identifiers are then classified as either known (excluded by design)
+or unexpected (requiring investigation before proceeding).
+
+```{r}
+check_pid_coverage <- function(df, df_name) {
+  unmatched <- unique(
+    df$pid[!(df$pid %in% cleaned_visit_codes_and_dates$clean_study_id)]
+  )
+  known   <- intersect(unmatched, known_unresolvable_pids)
+  unknown <- setdiff(unmatched, known_unresolvable_pids)
+
+  if (length(known) > 0) {
+    message(
+      df_name, ": ", length(known),
+      " known unresolvable pid excluded by design from visit cleaning:\n  ",
+      paste(known, collapse = "\n  ")
+    )
+  }
+  if (length(unknown) > 0) {
+    warning(
+      df_name, ": ", length(unknown),
+      " UNEXPECTED unmatched pid investigate before proceeding:\n  ",
+      paste(unknown, collapse = "\n  "),
+      call. = FALSE
+    )
+  }
+  invisible(list(known = known, unknown = unknown))
+}
+
+unresolved_ids <- list(
+  clean_baseline_2                               = check_pid_coverage(clean_baseline_2,                               "clean_baseline_2"),
+  clean_baseline_intake                          = check_pid_coverage(clean_baseline_intake,                          "clean_baseline_intake"),
+  clean_baseline_intake_with_subjective_cleaning = check_pid_coverage(clean_baseline_intake_with_subjective_cleaning, "clean_baseline_intake_with_subjective_cleaning"),
+  clean_blood_mucosal                            = check_pid_coverage(clean_blood_mucosal,                            "clean_blood_mucosal"),
+  clean_blood_mucosal_with_subjective_cleaning   = check_pid_coverage(clean_blood_mucosal_with_subjective_cleaning,   "clean_blood_mucosal_with_subjective_cleaning"),
+  validation_baseline_intake                     = check_pid_coverage(validation_baseline_intake,                     "validation_baseline_intake"),
+  validation_baseline_2                          = check_pid_coverage(validation_baseline_2,                          "validation_baseline_2"),
+  clean_3mo_risk                          = check_pid_coverage(clean_3mo_risk,                          "clean_3mo_risk")
+)
+
+```
+
+## Building **colData** based on LIMS manifest
+
+The LIMS manifest is the only source that records every physical sample
+collected, regardless of whether downstream assay data exist yet. Building
+`colData` from it ensures that every sampling occasion is represented in the MAE
+even before sequencing outputs are available. Rows in `colData` that have no
+matching assay data do not appear in assay-specific subsets.
+
+### Cleaning and parsing the manifest
+
+Several data quality issues were identified in the raw manifest and are fixed
+here.
+
+The volume value contains a mix of units (`ml`, `ML`, `ul`, `UL`), European
+decimal notation (`1,0`), trailing punctuation (`1.0.`), and the string `EMPTY`.
+All values are normalised to microlitres. Bare integers below 5 are assumed to
+have been entered in millilitres and are multiplied by 1000 accordingly. The raw
+value is retained as `volume_raw`.
+
+::: callout-warning
+Do you agree with the fixes done here ? is it important at this stage ?
+:::
+
+```{r}
+parse_volume_ul <- function(x) {
+  x_clean <- str_trim(str_to_upper(x)) |>
+    str_replace_all(",", ".") |> 
+    str_replace_all("(?<=\\d)\\.\\s+(?=\\d)", ".") |> 
+    str_replace_all("(?<=\\d)\\s+(?=[A-Z])", "") |>
+    str_replace_all("(?<=[A-Z])\\s+(?=\\d)", "") |>
+    str_replace_all("\\.$", "") |>
+    str_replace_all("(?<=\\d)M$", "ML")
+  result <- case_when(
+    x_clean == "EMPTY"                          ~ 0,
+    str_detect(x_clean, "^[0-9.]+ML$")         ~ as.numeric(str_extract(x_clean, "[0-9.]+")) * 1000,
+    str_detect(x_clean, "^[0-9.]+UL$")         ~ as.numeric(str_extract(x_clean, "[0-9.]+")),
+    str_detect(x_clean, "^[0-9.]+$")           ~ {
+      val <- as.numeric(x_clean)
+      if_else(val < 5, val * 1000, val)
+    },
+    TRUE~ NA_real_
+  )
+  unrecognised <- x[is.na(result) & !is.na(x)]
+  if (length(unrecognised) > 0) {
+    warning(
+      "parse_volume_ul: ", length(unrecognised),
+      " unrecognised volume pattern(s) → NA:\n  ",
+      paste(unique(unrecognised), collapse = "\n  "),
+      call. = FALSE
+    )
+  }
+  result
+}
+
+```
+
+```{r}
+manifest_clean <- manifest |>
+  rename(
+    pid         = `\r\nPID`,
+    sample_date = `\r\nSample_Date`,
+    visit_code  = `\r\nTimepoint`,
+    volume_raw  = `\r\nValue`,       # keep raw 
+    sample_type = `Sample Type`,
+    n_vials     = `No of vials`,
+    storage     = `Storage`,
+    lims_number = `LIMS_Number`
+  ) |>
+  select(pid, sample_date, visit_code, volume_raw,
+         sample_type, n_vials, storage, lims_number) |>
+  mutate(
+    sample_date = as_date(sample_date),
+    volume_ul   = parse_volume_ul(volume_raw), # use the function to fix the raw volume
+    lims_number = as.character(lims_number)
+  ) |>
+  filter(!is.na(pid), !is.na(lims_number))
+
+# Audit: flag any values that could not be fixed
+unparseable <- manifest_clean |>
+  filter(is.na(volume_ul), !is.na(volume_raw)) |>
+  count(volume_raw)
+
+if (nrow(unparseable) > 0) {
+  warning(
+    "parse_volume_ul: ", nrow(unparseable),
+    " unrecognised volume pattern(s) → NA:\n  ",
+    paste(unparseable$volume_raw, collapse = "\n  "),
+    call. = FALSE
+  )
+} else {
+  message("parse_volume_ul: all values parsed successfully")
+}
+
+```
+
+#### Computing study_day
+
+Rather than relying on nominal visit dates alone for temporal ordering, we
+compute `study_day` as the number of days since each participant's earliest
+sample in the manifest. This anchor is computed once from the full manifest so
+that the value is consistent across `colData` and the future `sampleMap`:
+
+```{r}
+global_anchors <- manifest_clean |>
+  group_by(pid) |>
+  summarise(anchor_date = min(sample_date, na.rm = TRUE), .groups = "drop")
+```
+
+#### Constructing the primary key
+
+The primary key uniquely identifies each row of `colData`. We use
+`pid_visitcode_studyday` rather than `pid` alone (not unique across visits) or
+`pid_visitcode` alone (32 visit codes have samples on two distinct dates).
+Including `study_day` resolves this ambiguity while keeping the key
+human-readable. The three rows with a missing `visit_code` use `pid_studyday` as
+a fallback.
+
+```{r}
+col_data_df <- manifest_clean |>
+  left_join(global_anchors, by = "pid") |>
+  mutate(study_day = as.integer(sample_date - anchor_date)) |>
+  select(-anchor_date) |>
+  group_by(pid, visit_code, sample_date, study_day) |>
+  summarise(.groups = "drop") |>
+  mutate(
+    primary_key = case_when(
+      !is.na(visit_code) ~ paste(pid, visit_code, study_day, sep = "_"),
+      TRUE               ~ paste(pid, study_day, sep = "_")
+    )
+  ) |>
+  tibble::column_to_rownames("primary_key")
+
+stopifnot(
+  "primary_key is not unique in colData" =
+    n_distinct(rownames(col_data_df)) == nrow(col_data_df)
+)
+
+message(
+  "colData: ", nrow(col_data_df), " rows across ",
+  n_distinct(col_data_df$pid), " participants"
+)
+```
+
+::: callout-warning
+**32 visit codes have samples on two distinct dates (due to split collections or
+data entry issues?)** should we investigate to fix this ? Right now, they are
+retained as separate `colData` rows (one per date) rather than collapsed.
+:::
+
+manifest_clean \|\> group_by(pid, visit_code) \|\> mutate(n_dates =
+n_distinct(sample_date)) \|\> filter(n_dates \> 1) \|\> arrange(pid, visit_code,
+sample_date) \|\> select(pid, visit_code, sample_date, sample_type, lims_number,
+n_vials) \|\> print(n = Inf)
+
+#### Adding visit codes to ColData
+
+Where available, visit codes from the cleaned visit-code pipeline are used to
+fill or confirm the `visit_code` field. This handles cases where the LIMS
+recorded a slightly different code from the one validated during clinical data
+cleaning.
+
+```{r}
+visit_code_lookup <- cleaned_visit_codes_and_dates |>
+  filter(!clean_study_id %in% known_unresolvable_pids) |>
+  select(
+    pid        = clean_study_id,
+    visit_date = clean_visit_date,
+    clean_visit_code
+  ) |>
+  distinct() |>
+  group_by(pid, visit_date) |>
+  slice(1) |>        # keep one row per pid x visit_date
+  ungroup()
+
+col_data_df <- col_data_df |>
+  as.data.frame() |>
+  mutate(rn = rownames(col_data_df)) |>
+  left_join(visit_code_lookup, by = c("pid", "sample_date" = "visit_date")) |>
+  mutate(visit_code = coalesce(clean_visit_code, visit_code)) |>
+  select(-clean_visit_code) |>
+  tibble::column_to_rownames("rn")
+
+stopifnot(
+  "row names not unique after visit code enrichment" =
+    !any(duplicated(rownames(col_data_df)))
+)
+
+col_data_df <- DataFrame(col_data_df)
+
+message(
+  "colData after visit code enrichment: ", nrow(col_data_df), " rows across ",
+  n_distinct(col_data_df$pid), " participants"
+)
+```
+
+#### Adding LIMS number to ColData 
+
+
+```{r}
+
+lims_per_occasion <- manifest_clean |>
+  left_join(global_anchors, by = "pid") |>
+  mutate(
+    study_day   = as.integer(sample_date - anchor_date),
+    primary_key = case_when(
+      !is.na(visit_code) ~ paste(pid, visit_code, study_day, sep = "_"),
+      TRUE               ~ paste(pid, study_day, sep = "_")
+    )
+  ) |>
+  group_by(primary_key) |>
+  summarise(
+    lims_numbers  = list(unique(lims_number)),
+    sample_types  = list(unique(sample_type)),
+    n_vials_total = n(),
+    .groups = "drop"
+  )
+
+col_data_df <- col_data_df |>
+  as.data.frame() |>
+  tibble::rownames_to_column("primary_key") |>
+  left_join(lims_per_occasion, by = "primary_key") |>
+  tibble::column_to_rownames("primary_key") |>
+  mutate(
+    lims_numbers = I(lims_numbers),   # I() protects list-columns from being
+    sample_types = I(sample_types)    # silently dropped by DataFrame()
+  ) |>
+  DataFrame()
+
+stopifnot(
+  "LIMS join duplicated colData rows" =
+    nrow(col_data_df) == n_distinct(rownames(col_data_df)),
+  "lims_numbers missing from colData" =
+    "lims_numbers" %in% names(col_data_df),
+  "DataFrame conversion dropped rows" =
+    nrow(col_data_df) > 0
+)
+
+message(
+  "colData enriched with LIMS inventory: ",
+  nrow(col_data_df), " rows, ",
+  sum(lengths(col_data_df$lims_numbers)), " total vials registered"
+)
+```
+
+
+## Building the **SampleMap**
+
+The `sampleMap` requires three pieces of information: the assay name, the
+`colData` primary key, and the column name used in the assay matrix. The first
+two can be derived from the manifest, but the third — the column identifier
+actually used in each sequencing output — is not yet available. Critically,
+`sample_type` in the LIMS (e.g. `CVL_PELLET`) describes physical material, not
+an analytical assay: the same vial type could yield 16S amplicon data,
+metagenomics, and proteomics data depending on which analyses were run. The
+`sampleMap` will therefore be populated assay by assay as data arrive. The
+manifest is stored in `metadata` to make that future join straightforward. The
+primary keys are nonetheless pre-computed on the manifest so that the linkage
+logic is already in place.
+
+```{r}
+manifest_clean <- manifest_clean |>
+  left_join(global_anchors, by = "pid") |>
+  mutate(study_day = as.integer(sample_date - anchor_date)) |>
+  select(-anchor_date)
+
+# verify
+message(
+  "study_day NAs in manifest_clean: ",
+  sum(is.na(manifest_clean$study_day))
+)
+
+sample_map_df <- manifest_clean |>
+  mutate(
+    primary_key = case_when(
+      !is.na(visit_code) ~ paste(pid, visit_code, study_day, sep = "_"),
+      TRUE               ~ paste(pid, study_day, sep = "_")
+    )
+  ) |>
+  filter(primary_key %in% rownames(col_data_df)) |>
+  transmute(
+    assay   = sample_type, # placeholder : it will be recoded per assay
+    primary = primary_key,
+    colname = lims_number # placeholder : it will be recoded per matrix colnames
+  ) |>
+  distinct() |>
+  DataFrame()
+```
+
+::: callout-important
+**sampleMap is a placeholder** The `assay` column currently contains LIMS sample
+types, not analytical assay names. The `colname` column contains LIMS numbers,
+which may or may not match the column names used in assay outputs. Both must be
+reconciled when each assay matrix is added.
+
+
+:::
+
+## Checking CRF coverage for future **metadata**
+
+Before assembling the MAE, we verify what proportion of participants in each CRF
+can be linked to a `colData` row. Participants present in a CRF but absent from
+`colData` would have no sample record in the LIMS and cannot be included in
+assay-linked analyses.
+
+```{r}
+# check pid coverage in each CRF against colData
+crf_pid_coverage <- list(
+  baseline_intake              = clean_baseline_intake,
+  baseline_intake_clean        = clean_baseline_intake_with_subjective_cleaning,
+  baseline_intake_validation   = validation_baseline_intake,
+  baseline_2                   = clean_baseline_2,
+  baseline_2_validation        = validation_baseline_2,
+  blood_mucosal                = clean_blood_mucosal,
+  blood_mucosal_clean          = clean_blood_mucosal_with_subjective_cleaning,
+  risk_3mo                     = clean_3mo_risk
+) |>
+  purrr::imap(function(df, name) {
+    n_total    <- n_distinct(df$pid)
+    n_matched  <- n_distinct(df$pid[df$pid %in% col_data_df$pid])
+    n_unmatched <- n_total - n_matched
+    message(
+      name, ": ", n_matched, "/", n_total, " pids in colData",
+      if (n_unmatched > 0) paste0(" (", n_unmatched, " unmatched)") else "matched"
+    )
+  })
+```
+
+## Assembling the skeleton MAE
+
+At this stage, the MAE is assembled with an empty `ExperimentList`. Since the `ExperimentList` is empty, any non-empty `sampleMap` would fail validation immediately. The pre-computed version is stored in `metadata` for
+use when assays are added (it would not work at this stage), purely as a reference table. That will make building each assay's `sampleMap` slice a simple filter operation rather than rebuilding the logic from scratch.
+All supporting data are stored in `metadata` under a structured hierarchy so they remain accessible
+and versioned alongside the MAE object itself.
+
+```{r}
+mae <- MultiAssayExperiment(
+  experiments = ExperimentList(),
+  sampleMap   = DataFrame(
+    assay   = factor(character()),
+    primary = character(),
+    colname = character()
+  ),
+  metadata = list(
+    mae_creation_date = Sys.time(),
+    sample_manifest   = list(
+      source_file    = "FRESH HPP127 Samples-Comprehensive-01 October 2025.xlsx",
+      raw            = manifest_clean,
+      global_anchors = global_anchors,
+      sample_map     = sample_map_df
+    ),
+    clinical_vars = list(
+      baseline_intake            = clean_baseline_intake,
+      baseline_intake_clean      = clean_baseline_intake_with_subjective_cleaning,
+      baseline_intake_validation = validation_baseline_intake,
+      baseline_2                 = clean_baseline_2,
+      baseline_2_validation      = validation_baseline_2,
+      blood_mucosal              = clean_blood_mucosal,
+      blood_mucosal_clean        = clean_blood_mucosal_with_subjective_cleaning,
+      risk_3mo                   = clean_3mo_risk,
+      survey_raw                 = survey_raw,
+      acutes                     = acutes
+    ),
+    reference_id_vars = list(
+      crosswalk               = id_crosswalk,
+      visit_codes_and_dates   = cleaned_visit_codes_and_dates,
+      unresolved_ids          = unresolved_ids,
+      known_unresolvable_pids = known_unresolvable_pids
+    )
+  )
+)
+
+# Assign colData after construction to bypass harmonisation against empty sampleMap
+slot(mae, "colData") <- col_data_df
+
+stopifnot(
+  "colData not assigned correctly" =
+    nrow(colData(mae)) == nrow(col_data_df),
+  "colData rownames lost" =
+    !is.null(rownames(colData(mae))),
+  "metadata slots missing" =
+    all(c("mae_creation_date", "sample_manifest",
+          "clinical_vars", "reference_id_vars")
+        %in% names(metadata(mae)))
+)
+
+message(
+  "MAE skeleton assembled successfully",
+  "\n  colData    : ", nrow(colData(mae)), " rows across ",
+                       n_distinct(colData(mae)$pid), " participants",
+  "\n  LIMS vials : ", sum(lengths(colData(mae)$lims_numbers)),
+                       " registered across colData rows",
+  "\n  assays     : ", length(experiments(mae)),
+                       " (empty — to be populated as data arrive)",
+  "\n  sampleMap  : empty constructor; pre-computed linkage in ",
+                       "metadata$sample_manifest$sample_map (",
+                       nrow(metadata(mae)$sample_manifest$sample_map), " rows)",
+  "\n  metadata   : ", length(metadata(mae)), " slots: ",
+                       paste(names(metadata(mae)), collapse = ", ")
+)
+```
+
+```{r}
+#saveRDS(mae, str_c(get_data_dir(), "derived_data/mae_skeleton.rds"))
+```
+
+# Notes and remarks
+
+## On replicates
+
+I wondered how to handled duplicated; so taking an exemple of one sample run
+twice for 16S.
+
+This is exactly what the `colname` + `sampleMap` design handles. If LIMS number
+`396236` was sequenced twice, producing two columns in the 16S matrix
+(`396236_run1` and `396236_run2`), the `sampleMap` would have two rows with the
+same primary but different colname values:
+
+```         
+assay   primary                      colname
+16S     127-33-0001-003_1-011-0_0    396236_run1
+16S     127-33-0001-003_1-011-0_0    396236_run2
+```
+
+This is explicitly supported by the MAE spec : duplicate primary values (here`pid`x`visit_code`x`visit_day`) in the `sampleMap` represent replicates. Both columns appear in the assay matrix, both point to the same `colData` row. When subset by participant or visit, we get both replicates, and we keep all information in the MAE until we know how to handle them (average, take best quality, run sensitivity analysis).
+
+## On LIMS numbers
+
+I wondered how they will be handled, it depends on the assays data structure I guess and hopefully it willlook like the following : 
+```         
+colData row  →  sampleMap$colname  →  assay matrix column
+                     ↑
+               = lims_number
+```
+
+For each assay data received, verify the column names to match the `lims_number`.
+
+## Next steps : adding assays as data arrive
+
+When a new assay matrix becomes available (e.g. 16S feature table, metagenomic
+count matrix), the procedure is as follows.
+
+**1. Identify which LIMS numbers correspond to this assay.**
+
+Join the internal barcode or sample name to a LIMS number against
+`metadata(mae)$sample_manifest$raw` to recover the `primary` key:
+
+```{r}
+#| eval: false
+# Example: 16S assay arrives with columns named by LIMS number
+assay_colnames  
+  filter(lims_number %in% assay_colnames) |>
+  mutate(
+    primary = case_when(
+      !is.na(visit_code) ~ paste(pid, visit_code, study_day, sep = "_"),
+      TRUE               ~ paste(pid, study_day, sep = "_")
+    )
+  ) |>
+  select(primary, colname = lims_number) |>
+  distinct()
+```
+
+**2. Build the assay-specific sampleMap :**
+
+```{r}
+#| eval: false
+samplemap_16s <- DataFrame(
+  assay   = "16S",
+  primary = assay_lims_map$primary,
+  colname = assay_lims_map$colname
+)
+```
+
+**3. Wrap the matrix in a SummarizedExperiment and add to the MAE:**
+
+```{r}
+#| eval: false
+se_16s <- SummarizedExperiment(assays = list(counts = counts_16s))
+
+mae <- c(
+  mae,
+  `16S` = se_16s,
+  sampleMap = samplemap_16s
+)
+
+upsetSamples(mae)   # visualise sample coverage across assays
+```
+
+::: callout-note
+**Assay naming convention** Assay names become permanent keys in the
+`ExperimentList` and must match the `assay` column of every `sampleMap` slice
+added thereafter.
+:::
+
+::: callout-important
+**To do before the first assay is added** - Confirm that the column names in
+each sequencing output are LIMS numbers, or obtain the crosswalk from the
+sequencing barcodes. - Resolve the 32 pid × visit_code pairs with two sample
+dates with the clinical team —\> determine whether these are split collections
+(keep both rows) or entry errors (merge to one row). - Agree on canonical assay
+names for `ExperimentList`to match in `sampleMap`.
+:::
+
+
+# Reference
+
+Ramos, Marcel, Lucas Schiffer, Angela Re, et al. 2017. “Software for the
+Integration of Multiomics Experiments in Bioconductor.” Cancer Research 77 (21):
+e39–42. https://doi.org/10.1158/0008-5472.CAN-17-0344.
