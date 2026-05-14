@@ -1,0 +1,63 @@
+---
+title: Example PanelMAE Setup
+execute:
+    message: false
+    warnings: false
+---
+
+```{r}
+library(MultiAssayExperiment)
+library(SummarizedExperiment)
+library(tidyverse)
+library(fs)
+library(here)
+
+set.seed(202605)
+data_dir <- here() / path("data")
+src_dir  <- here() / path("src/data")
+tmp <- dir_map(src_dir, source)
+```
+
+## Load the toy MAE
+
+```{r}
+example_mae <- readRDS(data_dir / "example_mae.rds")
+pma <- from_mae(example_mae)
+events(pma)
+```
+
+## `view` options
+
+```{r}
+v_last <- view(pma, t_star = 25, strategy = "last")
+v_all <- view(pma, t_star = Inf, strategy = "all")
+```
+
+## `life_table` options
+
+```{r}
+lt_visits <- life_table(pma, cut_strategy = "visits")
+lt_visits
+```
+
+```{r}
+lt_events <- life_table(pma, cut_strategy = "event_times")
+lt_events
+```
+
+## Subsetting
+
+```{r}
+small <- pma |>
+  subset_cohorts(c("C01", "C02")) |>
+  subset_subjects(paste0("S00", sprintf("%02d", 1:10)))
+
+samples(small)
+events(small)
+```
+
+## Model Matrix
+
+```{r}
+design <- model_frame(pma, t_star = 28, strategy = "last")
+```
