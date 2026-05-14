@@ -1,8 +1,10 @@
 # view(pma, t_star, ...)
 #
-# Materialize covariates up to time t_star. Each experiment is column-subset to
-# the visits retained by `strategy`. Experiment-level colData are augmented with
-# the standardized pair (study_id, t). MAE-level colData remain subject-level.
+# Filter or summarize PanelMAEs according to a reference time t_star. For
+# example, when `strategy` is 'last', we just keep the last visit before time
+# t_star for each of the MAEs. We add (study_id, t) to the experiment-level
+# colData's so that we retain a memory of which rows from the original
+# experiments are kept.
 
 library(MultiAssayExperiment)
 library(SummarizedExperiment)
@@ -26,8 +28,10 @@ library(tidyverse)
     )
 }
 
-# Slice one experiment and attach the standardized time coordinate t.
-# Extracts the desired subset and binds `visit_lookup` mappings.
+# Get an experiment and attach the time-since-enrollment t.
+#
+# Also adds the (study_id, t) information so that we don't loose that context
+# after subsetting.
 .subset_experiment <- function(pma, exp_name, sample_cols) {
     se <- experiments(pma$mae)[[exp_name]][, sample_cols, drop = FALSE]
 
@@ -45,13 +49,13 @@ library(tidyverse)
 view <- function(pma, ...) UseMethod("view")
 
 # Map each subject to their latest valid assay prior to `t_star`.
-# Constructs a standard MultiAssayExperiment subset.
+# Returns a subset of an MultiAssayExperiment.
 #
 # Inputs:
 #   pma: A PanelMAE object.
-#   t_star: Upper bound on valid observation times.
-#   strategy: Resolution strategy for multiple observations (e.g., 'last').
-# Output: A standard MultiAssayExperiment mapping subjects to resolved assays.
+#   t_star: Upper bound on allowed visit times.
+#   strategy: How to reduce multiple observations to a single summary.
+# Output: An MultiAssayExperiment mapping subjects to a filtered assays.
 view.PanelMAE <- function(
     pma,
     t_star = Inf,
