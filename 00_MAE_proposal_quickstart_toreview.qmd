@@ -60,7 +60,8 @@ tables, and a placeholder for derived analytical variables.
 
 ::: callout-note
 *Are there additional data sources that should be incorporated into this MAE at
-this stage or registered as future assays?*
+this stage or registered as future assays?* There are several warnings across
+the document, we can delete them if you would like now that the code runs.
 :::
 
 ## Set up
@@ -114,20 +115,11 @@ acutes = read_excel(str_c(get_data_dir(), "Acutes tables/_2024.9_FRESH Acute dat
   mutate(study_id = factor(str_remove_all(study_id, "-")))
 ```
 
-
 ::: callout-important
-*Are there any more data available so far that could be included at this stage
-?
-Should there be some kind of cleaning there for the acutes for instance ?*
-add the cohort/enrollment group (from where ?)
-is it : $clean_blood_mucosal
-[1] "group"
-
-$clean_blood_mucosal_with_subjective_cleaning
-[1] "group"
-
-$survey_raw
-[1] "blood_mucosal_group_number" "group"   
+*Are there any more data available so far that could be included at this stage ?
+Should there be some kind of cleaning there for the acutes for instance ?* add
+the cohort/enrollment group (from where ?) is it : clean_blood_mucosal$group
+& survey_raw$group how can we handle the NA ?
 :::
 
 ### Harmonising participant identifiers
@@ -449,8 +441,7 @@ message(
 )
 ```
 
-#### Adding LIMS number to ColData 
-
+#### Adding LIMS number to ColData
 
 ```{r}
 
@@ -497,7 +488,6 @@ message(
   sum(lengths(col_data_df$lims_numbers)), " total vials registered"
 )
 ```
-
 
 ## Building the **SampleMap**
 
@@ -547,8 +537,6 @@ sample_map_df <- manifest_clean |>
 types, not analytical assay names. The `colname` column contains LIMS numbers,
 which may or may not match the column names used in assay outputs. Both must be
 reconciled when each assay matrix is added.
-
-
 :::
 
 ## Checking CRF coverage for future **metadata**
@@ -583,15 +571,19 @@ crf_pid_coverage <- list(
 
 ## Assembling the skeleton MAE
 
-At this stage, the MAE is assembled with an empty `ExperimentList`. Since the `ExperimentList` is empty, any non-empty `sampleMap` would fail validation immediately. The pre-computed version is stored in `metadata` for
-use when assays are added (it would not work at this stage), purely as a reference table. That will make building each assay's `sampleMap` slice a simple filter operation rather than rebuilding the logic from scratch.
-All supporting data are stored in `metadata` under a structured hierarchy so they remain accessible
-and versioned alongside the MAE object itself.
+At this stage, the MAE is assembled with an empty `ExperimentList`. Since the
+`ExperimentList` is empty, any non-empty `sampleMap` would fail validation
+immediately. The pre-computed version is stored in `metadata` for use when
+assays are added (it would not work at this stage), purely as a reference table.
+That will make building each assay's `sampleMap` slice a simple filter operation
+rather than rebuilding the logic from scratch. All supporting data are stored in
+`metadata` under a structured hierarchy so they remain accessible and versioned
+alongside the MAE object itself.
 
 ```{r}
 mae <- MultiAssayExperiment(
-  experiments = ExperimentList(),
-  sampleMap   = DataFrame(
+  experiments = ExperimentList(), #empty but will be completed with received data
+  sampleMap   = DataFrame(  #empty but will be completed with received data
     assay   = factor(character()),
     primary = character(),
     colname = character()
@@ -601,10 +593,10 @@ mae <- MultiAssayExperiment(
     sample_manifest   = list(
       source_file    = "FRESH HPP127 Samples-Comprehensive-01 October 2025.xlsx",
       raw            = manifest_clean,
-      global_anchors = global_anchors,
-      sample_map     = sample_map_df
+      global_anchors = global_anchors, #now it is pid and and real date, but once the cleaning step will be done before - it should disappear in final MAE
+      sample_map     = sample_map_df # placeholder : may be used for sampleMap building - it should disappear in final MAE
     ),
-    clinical_vars = list(
+    crfs = list( #add dictionnary
       baseline_intake            = clean_baseline_intake,
       baseline_intake_clean      = clean_baseline_intake_with_subjective_cleaning,
       baseline_intake_validation = validation_baseline_intake,
@@ -616,11 +608,11 @@ mae <- MultiAssayExperiment(
       survey_raw                 = survey_raw,
       acutes                     = acutes
     ),
-    reference_id_vars = list(
-      crosswalk               = id_crosswalk,
-      visit_codes_and_dates   = cleaned_visit_codes_and_dates,
-      unresolved_ids          = unresolved_ids,
-      known_unresolvable_pids = known_unresolvable_pids
+    reference_id_vars = list( # I think this should be deleted from the mae if cleaning occured before
+      crosswalk               = id_crosswalk, #the raw and cleaned study id - should not be kept in the mae
+      visit_codes_and_dates   = cleaned_visit_codes_and_dates, #the cleaned/raw visit codes and dates - should not be kept in the mae
+      unresolved_ids          = unresolved_ids, # list the unresolved pid issues - if cleaning occurs upstream - should not be kept in the mae
+      known_unresolvable_pids = known_unresolvable_pids # among the unresolved pid issues the ones that were flagged in previous codes - should not be kept in the mae
     )
   )
 )
@@ -663,6 +655,8 @@ message(
 
 ## On replicates
 
+DRAFT EXEMPLE adday primary colnames
+
 I wondered how to handled duplicated; so taking an exemple of one sample run
 twice for 16S.
 
@@ -677,18 +671,109 @@ assay   primary                      colname
 16S     127-33-0001-003_1-011-0_0    396236_run2
 ```
 
-This is explicitly supported by the MAE spec : duplicate primary values (here`pid`x`visit_code`x`visit_day`) in the `sampleMap` represent replicates. Both columns appear in the assay matrix, both point to the same `colData` row. When subset by participant or visit, we get both replicates, and we keep all information in the MAE until we know how to handle them (average, take best quality, run sensitivity analysis).
+This is explicitly supported by the MAE spec : duplicate primary values
+(here`pid`x`visit_code`x`visit_day` ?) in the `sampleMap` represent replicates.
+Both columns appear in the assay matrix, both point to the same `colData` row.
+When subset by participant or visit, we get both replicates, and we keep all
+information in the MAE until we know how to handle them (average, take best
+quality, run sensitivity analysis).
+
+\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_following Laura and Lisa's
+meeting\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+
+One participant has several visits for which different sample types were done.
+These samples may have been aliquoted
+
+```         
+                                  ↗ Aliquot 1
+                 ↗ specimen 1  → Aliquot 2                  ↗ Pool 1
+                                  ↘ Aliquot 3 → DNAextract1 → Pool 2
+                                              ↘ DNAextract2 → Pool 1
+pid1 →  visit 1  →  specimen 2
+
+                 ↘ specimen 3
+
+
+                                ↗ Aliquot 1
+                 ↗ specimen 1  → Aliquot 2               ↗ Pool 1
+                               ↘ Aliquot 3 → DNAextract1 → Pool 2
+                                            ↘ DNAextract2 → Pool 1
+pid1 →  visit 2  →  specimen 2
+
+                 ↘ specimen 3
+
+
+pid1 -> visit 3
+```
+
+This would result in a table like this on :
+
+```         
+participant - visit - specimen - lims - aliquot - extraction - seq - assay   
+
+pid1            1       1       XX1       1         1           1   amplicon_16S
+pid1            1       1       XX1       2         1           1   amplicon_16S
+pid1            1       1       XX1       3         1           1   amplicon_16S
+pid1            1       1       XX1       3         1           2   amplicon_16S
+pid1            1       1       XX1       3         2           1   amplicon_16S
+pid1            1       2       XX2       1                         metagenomics
+pid1            1       3       XX3       1                         cytokines
+pid1            2       1       X21       1         1           1   amplicon_16S
+pid1            2       1       X21       2         1           1   amplicon_16S
+pid1            2       1       X21       3         1           1   amplicon_16S
+pid1            2       1       X21       3         1           2   amplicon_16S
+pid1            2       1       X21       3         2           1   amplicon_16S
+pid1            2       2       X22       1                         metagenomics
+pid1            2       3       X23       1                         cytokines
+```
+
+The samples we may have example for 16S amplicon:
+
+```         
+participant - visit - specimen - lims - aliquot - extraction - seq - colname
+  1             1       SWAB     x41      1         1           1     SRR001
+  1             1       SWAB     x41      1         2           1     SRR002
+  1             1       SWAB     x41      1         2           2     SRR003
+  
+```
+
+These informations should be stored in the metadata, along with the 'raw' sample
+manifest.
+
+```         
+metadata(mae)$sample_manifest$sample_sheet_16S <- data.frame(
+  pid = "127-33-0001-003", 
+  visit = 1, 
+  specimen = "SWAB", 
+  lims = "x41", 
+  aliquot = c(1, 1, 1), 
+  extraction = c(1, 2, 2), 
+  seq_run = c(1, 1, 2), 
+  colname = c("SRR001","SRR002", "SRR003")
+  )
+```
+
+Colname is the sequencing run identifier provided by the sequencing facility.
+
+```         
+assay     primary                     colname      
+16S       127-33-0001-003_1-011-0_0   SRR001      
+16S       127-33-0001-004_1-011-0_0   SRR002 ... 
+```
 
 ## On LIMS numbers
 
-I wondered how they will be handled, it depends on the assays data structure I guess and hopefully it willlook like the following : 
+I wondered how they will be handled, it depends on the assays data structure I
+guess and hopefully it willlook like the following :
+
 ```         
 colData row  →  sampleMap$colname  →  assay matrix column
                      ↑
                = lims_number
 ```
 
-For each assay data received, verify the column names to match the `lims_number`.
+For each assay data received, verify the column names to match the
+`lims_number`.
 
 ## Next steps : adding assays as data arrive
 
@@ -755,7 +840,6 @@ dates with the clinical team —\> determine whether these are split collections
 (keep both rows) or entry errors (merge to one row). - Agree on canonical assay
 names for `ExperimentList`to match in `sampleMap`.
 :::
-
 
 # Reference
 
