@@ -2,3 +2,5 @@
 *.Rproj
 .Rhistory
 /00_MAE_proposal_quickstart_toreview_cache
+.DS_Store
+misc/MAE building suggestion - LS.pdf
