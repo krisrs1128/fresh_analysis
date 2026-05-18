@@ -627,7 +627,7 @@ stopifnot(
     !is.null(rownames(colData(mae))),
   "metadata slots missing" =
     all(c("mae_creation_date", "sample_manifest",
-          "clinical_vars", "reference_id_vars")
+          "crfs", "reference_id_vars")
         %in% names(metadata(mae)))
 )
 
