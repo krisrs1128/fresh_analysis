@@ -3,13 +3,6 @@
 # All keys except `engine` are forwarded verbatim as arguments to
 # fit_poisson_interval(emae, formula, cut_strategy, time_varying, predict_target).
 # See conf/models/README.md for the full schema.
-#
-# Note: `interval` in the formula is a factor column added automatically by
-# fit_poisson_interval; it models the piecewise-constant baseline hazard.
-# Remove it to obtain an exponential (constant baseline hazard) model.
-#
-# predict_survival.fit_pexp is not yet implemented; this spec is provided to
-# show the extension seam and allow grid construction alongside coxph specs.
 
 engine: pexp
 formula: "event ~ age_at_start + interval"
