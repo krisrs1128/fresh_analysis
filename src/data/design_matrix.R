@@ -15,9 +15,9 @@ library(tidyverse)
 #' Wide table: one row per (study_id) or (study_id, t), binding baseline
 #' characteristics to flattened assay variables. Removes redundant ID columns.
 #'
-#' @param view_output MultiAssayExperiment, typically from \code{view()}.
-#' @return Tibble uniquely identified by \code{(study_id)} or
-#'   \code{(study_id, t)}.
+#' @param view_output MultiAssayExperiment, typically from view().
+#' @return Tibble uniquely identified by (study_id) or
+#'   (study_id, t).
 design_matrix <- function(view_output) {
     # extract tables that will go into the merged design
     baseline_df <- as.data.frame(colData(view_output)) |>

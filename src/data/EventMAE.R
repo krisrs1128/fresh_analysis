@@ -113,8 +113,8 @@ validate_visit_times <- function(emae) {
 #' @param id_col Subject identifier column name.
 #' @param enroll_col Enrollment date column in baseline colData.
 #' @param visit_time_col Visit date column in experiment colData.
-#' @param time_unit Relative time unit: \code{"days"} or \code{"weeks"}.
-#' @param events_time_col Event date column in \code{events}.
+#' @param time_unit Relative time unit: "days" or "weeks".
+#' @param events_time_col Event date column in events.
 #' @return EventMAE with standardized event metadata and visit table.
 EventMAE <- function(
     mae,

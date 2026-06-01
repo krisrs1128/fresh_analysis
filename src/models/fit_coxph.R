@@ -21,13 +21,13 @@ library(tidyverse)
 #'
 #' @param emae EventMAE object.
 #' @param formula Counting-process formula string, e.g.
-#'   \code{"Surv(t_start, t_end, event) ~ age_at_start"}.
+#'   "Surv(t_start, t_end, event) ~ age_at_start".
 #' @param time_varying RHS variable names that change by interval.
 #'   Empty for baseline-only models.
 #' @param impute_covariate_trajectory Covariate trajectory strategy:
-#'   \code{"extrapolate_baseline"}, \code{"observed_path"},
-#'   \code{"counterfactual_path"}, or \code{"landmark"}.
-#' @return S3 object of class \code{fit_coxph}.
+#'   "extrapolate_baseline", "observed_path",
+#'   "counterfactual_path", or "landmark".
+#' @return S3 object of class fit_coxph.
 fit_coxph <- function(
     emae,
     formula,
@@ -74,7 +74,7 @@ print.fit_coxph <- function(x, ...) {
 #'
 #' @param emae EventMAE object.
 #' @param time_varying Time-varying covariate names (unused).
-#' @return Tibble ready for \code{coxph()}.
+#' @return Tibble ready for coxph().
 coxph_data <- function(emae, time_varying) {
     lt <- life_table(emae, cut_strategy = "visits") |>
         mutate(

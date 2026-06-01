@@ -14,10 +14,10 @@ library(fs)
 
 #' Read a Model Spec from YAML
 #'
-#' @param path Path to a YAML file (schema in \code{conf/models/README.md}).
+#' @param path Path to a YAML file (schema in conf/models/README.md).
 #' @return Named list forwarded as arguments to the fit function.
 read_spec <- function(path) {
-    spec <- yaml::read_yaml(path)
+    spec <- read_yaml(path)
     if (is.null(spec$time_varying)) {
         spec$time_varying <- character(0)
     } else {
@@ -39,11 +39,11 @@ load_fit_fns <- function() {
 
 #' Read Spec and Fit
 #'
-#' Forwards every spec key except \code{engine} as a named argument to the
+#' Forwards every spec key except engine as a named argument to the
 #' engine-specific fit function. No mapping layer.
 #'
 #' @param emae EventMAE object.
-#' @param spec Named list from \code{read_spec()}.
+#' @param spec Named list from read_spec().
 #' @return S3 fit object from the engine-specific fit function.
 fit_engine <- function(emae, spec) {
     load_fit_fns()

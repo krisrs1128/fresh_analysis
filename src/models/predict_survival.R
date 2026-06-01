@@ -15,13 +15,13 @@ library(tidyverse)
 
 #' Predict Survival Curves on a Shared Time Grid
 #'
-#' @param fit S3 fit object (\code{fit_coxph}, \code{fit_pexp}, …).
+#' @param fit S3 fit object (fit_coxph, fit_pexp, …).
 #' @param newdata Covariate trajectory: one row per (subject, interval) with
-#'   \code{study_id}, \code{t_start}, \code{t_end}, and RHS variables.
-#'   Use \code{constant_trajectory()} for baseline-only models.
+#'   study_id, t_start, t_end, and RHS variables.
+#'   Use constant_trajectory() for baseline-only models.
 #' @param times Numeric vector of evaluation times.
 #' @return Matrix (n_subjects × length(times)) of S(t | x) in [0, 1]. Rows
-#'   named by \code{study_id}; columns named by \code{times}.
+#'   named by study_id; columns named by times.
 predict_survival <- function(fit, newdata, times) {
     UseMethod("predict_survival")
 }
@@ -41,7 +41,7 @@ predict_survival <- function(fit, newdata, times) {
 #'
 #' S(t) held constant past the last observed event time.
 #'
-#' @param fit \code{fit_coxph} object.
+#' @param fit fit_coxph object.
 #' @param newdata Covariate trajectory tibble.
 #' @param times Evaluation times.
 #' @return Matrix of survival probabilities.
@@ -95,11 +95,11 @@ predict_survival.fit_coxph <- function(fit, newdata, times) {
 #' 1. Per-interval hazard rate:
 #'      lambda_k = predict(fit$glm, traj_k, type = "response") / width_k
 #' 2. H(t) = Σ_k lambda_k · (min(t_end_k, t) − t_start_k), t_start_k < t
-#' 3. S_cuts = exp(−H) at cut boundaries; interpolate onto \code{times}.
+#' 3. S_cuts = exp(−H) at cut boundaries; interpolate onto times.
 #'
 #' Stub ensures dispatch chain is complete and fails informatively.
 #'
-#' @param fit \code{fit_pexp} object.
+#' @param fit fit_pexp object.
 #' @param newdata Covariate trajectory tibble.
 #' @param times Evaluation times.
 #' @return Not implemented; signals error.
@@ -111,17 +111,17 @@ predict_survival.fit_pexp <- function(fit, newdata, times) {
 
 #' Build a Constant Trajectory to Predict Baselines
 #'
-#' Repeats a baseline row once per interval defined by \code{cuts}, holding
-#' all covariates constant at entry values. Input to \code{predict_survival()}
-#' when \code{impute_covariate_trajectory = "extrapolate_baseline"}.
+#' Repeats a baseline row once per interval defined by cuts, holding
+#' all covariates constant at entry values. Input to predict_survival()
+#' when impute_covariate_trajectory = "extrapolate_baseline".
 #'
-#' Pre-select \code{baseline_row} to formula columns only.
+#' Pre-select baseline_row to formula columns only.
 #'
-#' @param baseline_row One-row tibble with \code{study_id} and formula
+#' @param baseline_row One-row tibble with study_id and formula
 #'   covariates.
-#' @param cuts Interval boundaries (e.g. \code{fit$cuts}), ≥ 2 distinct
+#' @param cuts Interval boundaries (e.g. fit$cuts), ≥ 2 distinct
 #'   values.
-#' @return Tibble with \code{t_start}, \code{t_end}, \code{study_id}, and all
+#' @return Tibble with t_start, t_end, study_id, and all
 #'   covariate columns. One row per interval; covariates constant.
 constant_trajectory <- function(baseline_row, cuts) {
     cuts <- sort(unique(cuts))

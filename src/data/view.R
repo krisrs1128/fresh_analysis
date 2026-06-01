@@ -11,12 +11,12 @@ library(tidyverse)
 
 #' Keep One Sample Per Subject or All Eligible Samples
 #'
-#' Internal wrapper around \code{dplyr::slice_max()}.
+#' Internal wrapper around dplyr::slice_max().
 #'
 #' @param eligible_samples Tibble of candidate sample rows.
-#' @param strategy \code{"last"} for the most recent visit per subject, or
-#'   \code{"all"} to retain every eligible visit.
-#' @return Character vector of \code{sample_col} values to retain.
+#' @param strategy "last" for the most recent visit per subject, or
+#'   "all" to retain every eligible visit.
+#' @return Character vector of sample_col values to retain.
 apply_strategy <- function(eligible_samples, strategy) {
     switch(
         strategy,
@@ -34,12 +34,12 @@ apply_strategy <- function(eligible_samples, strategy) {
 #' Subset an Experiment, Annotate with Relative Time
 #'
 #' Extracts a SummarizedExperiment by sample columns, annotates colData with
-#' \code{study_id} and \code{t}.
+#' study_id and t.
 #'
 #' @param emae EventMAE object.
 #' @param exp_name Experiment name.
 #' @param sample_cols Sample column names to retain.
-#' @return SummarizedExperiment with \code{study_id} and \code{t} in colData.
+#' @return SummarizedExperiment with study_id and t in colData.
 subset_experiment <- function(emae, exp_name, sample_cols) {
     se <- experiments(emae$mae)[[exp_name]][, sample_cols, drop = FALSE]
 
@@ -58,16 +58,16 @@ view <- function(emae, ...) UseMethod("view")
 
 #' Subset EventMAE to Valid Assay Observations
 #'
-#' Filters each experiment to visits at or before \code{t_star}, then reduces
-#' multiple observations per subject by \code{strategy}.
+#' Filters each experiment to visits at or before t_star, then reduces
+#' multiple observations per subject by strategy.
 #'
 #' @param emae EventMAE object.
-#' @param t_star Upper bound on visit times. Default \code{Inf}.
-#' @param strategy \code{"last"} (most recent visit) or \code{"all"}
+#' @param t_star Upper bound on visit times. Default Inf.
+#' @param strategy "last" (most recent visit) or "all"
 #'   (every eligible visit).
-#' @param summary_fns Not yet implemented.
+#' @param summary_fns Not implemented yet...
 #' @param assays Experiments to include. Default: all.
-#' @param drop_post_event Exclude post-event visits? Default \code{TRUE}.
+#' @param drop_post_event Exclude post-event visits? Default TRUE.
 #' @return MultiAssayExperiment with filtered assays.
 view.EventMAE <- function(
     emae,

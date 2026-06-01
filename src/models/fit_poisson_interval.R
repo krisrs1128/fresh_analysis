@@ -9,7 +9,7 @@
 #   time_varying              — forwarded from spec
 #   impute_covariate_trajectory — forwarded from spec
 #
-# Alternatives to the cut grid are:
+# Choices for cut_strategy are:
 #    event_times → fine step function
 #     visits → coarser grid tied to sampling design. The grid travels with the
 #       fit so predict_survival() reconstructs S(t | x) without the original
@@ -22,18 +22,18 @@ library(tidyverse)
 #' Fit a Piecewise-Exponential (Poisson GLM) Survival Model
 #'
 #' @param emae EventMAE object.
-#' @param formula Poisson formula with \code{event} as outcome. Include
-#'   \code{interval} on RHS for baseline hazard that changes over intervals
+#' @param formula Poisson formula with event as outcome. Include
+#'   interval on RHS for baseline hazard that changes over intervals
 #'   Example:
-#'   \code{"event ~ age_at_start + interval"}.
-#' @param cut_strategy \code{"event_times"} (fine grid) or '   \code{"visits"}
+#'   "event ~ age_at_start + interval".
+#' @param cut_strategy "event_times" (fine grid) or '   "visits"
 #    (coarser, tied to sampling).
 #' @param time_varying RHS variable names that change by interval.
 #'   Empty for baseline-only models.
 #' @param impute_covariate_trajectory Covariate trajectory strategy:
-#'   \code{"extrapolate_baseline"}, \code{"observed_path"},
-#'   \code{"counterfactual_path"}, or \code{"landmark"}.
-#' @return S3 object of class \code{fit_pexp}.
+#'   "extrapolate_baseline", "observed_path",
+#'   "counterfactual_path", or "landmark".
+#' @return S3 object of class fit_pexp.
 fit_poisson_interval <- function(
     emae,
     formula,
@@ -85,8 +85,8 @@ print.fit_pexp <- function(x, ...) {
 #' event, interval factor, baseline colData).
 #'
 #' @param emae EventMAE object.
-#' @param cut_strategy Passed to \code{life_table()}.
-#' @return Tibble for \code{glm()}.
+#' @param cut_strategy Passed to life_table().
+#' @return Tibble for glm().
 pexp_data <- function(emae, cut_strategy) {
     lt <- life_table(emae, cut_strategy = cut_strategy) |>
         mutate(

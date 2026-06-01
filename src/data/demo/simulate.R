@@ -209,8 +209,8 @@ simulate_events <- function(
 
     n     <- nrow(df)
     event <- as.integer(runif(n) < event_rate)
-    
-    # Generate event dates: 
+
+    # Generate event dates:
     # - If event==1: random date between enrollment and last visit
     # - If event==0: last visit date (censoring time)
     event_date <- ifelse(

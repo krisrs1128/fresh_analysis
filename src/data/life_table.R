@@ -13,10 +13,10 @@ library(tidyverse)
 #'
 #' @param events_data Tibble of per-subject event times.
 #' @param visit_table Tibble of observed assay visit times.
-#' @param cut_strategy \code{"visits"}: split at each subject's own visit
-#'   times. \code{"event_times"}: split at all observed event times (useful
+#' @param cut_strategy "visits": split at each subject's own visit
+#'   times. "event_times": split at all observed event times (useful
 #'   for piecewise-exponential models).
-#' @return Tibble mapping \code{study_id} to a list-column of \code{cuts}.
+#' @return Tibble mapping study_id to a list-column of cuts.
 subject_cuts <- function(events_data, visit_table, cut_strategy) {
     if (cut_strategy == "visits") {
         return(
@@ -62,13 +62,13 @@ life_table <- function(emae, ...) UseMethod("life_table")
 #' event, at risk with no event, or post-event.
 #'
 #' @param emae EventMAE object.
-#' @param cut_strategy \code{"visits"} or \code{"event_times"}.
+#' @param cut_strategy "visits" or "event_times".
 #' @param cuts Optional additional cut points.
 #' @param include_post_event_rows Retain rows after the terminal event
-#'   interval? Default \code{FALSE}.
-#' @return Tibble with columns \code{study_id}, \code{t_start}, \code{t_end},
-#'   \code{event_status} (one of \code{"event_in_interval"},
-#'   \code{"at_risk_no_event"}, \code{"past_event"}).
+#'   interval? Default FALSE.
+#' @return Tibble with columns study_id, t_start, t_end,
+#'   event_status (one of "event_in_interval",
+#'   "at_risk_no_event", "past_event").
 life_table.EventMAE <- function(
     emae,
     cut_strategy = c("visits", "event_times"),
