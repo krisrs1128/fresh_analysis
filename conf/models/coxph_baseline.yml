@@ -1,0 +1,9 @@
+# Example Cox proportional hazards specification
+#
+# All keys (except `engine`) are sent to,
+# fit_coxph(emae, formula, time_varying, predict_target).
+
+engine: coxph
+formula: "Surv(t_start, t_end, event) ~ age_at_start"
+time_varying: []
+impute_covariate_trajectory: extrapolate_baseline

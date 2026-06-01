@@ -1,8 +1,8 @@
 ---
-title: Example PanelMAE Setup
+title: Example EventMAE Setup
 execute:
     message: false
-    warnings: false
+    warning: false
 ---
 
 ```{r}
@@ -15,40 +15,41 @@ library(here)
 set.seed(202605)
 data_dir <- here() / path("data")
 src_dir  <- here() / path("src/data")
-tmp <- dir_map(src_dir, source)
+tmp <- dir_map(src_dir, source, type = "file")
 ```
 
 ## Load the toy MAE
 
 ```{r}
 example_mae <- readRDS(data_dir / "example_mae.rds")
-pma <- from_mae(example_mae)
-events(pma)
+emae <- from_mae(example_mae)
+events(emae)
 ```
 
 ## `view` options
 
 ```{r}
-v_last <- view(pma, t_star = 25, strategy = "last")
-v_all <- view(pma, t_star = Inf, strategy = "all")
+v_last <- view(emae, t_star = 25, strategy = "last")
+v_all <- view(emae, t_star = Inf, strategy = "all")
+v_last
 ```
 
 ## `life_table` options
 
 ```{r}
-lt_visits <- life_table(pma, cut_strategy = "visits")
+lt_visits <- life_table(emae, cut_strategy = "visits")
 lt_visits
 ```
 
 ```{r}
-lt_events <- life_table(pma, cut_strategy = "event_times")
+lt_events <- life_table(emae, cut_strategy = "event_times")
 lt_events
 ```
 
 ## Subsetting
 
 ```{r}
-small <- pma |>
+small <- emae |>
   subset_cohorts(c("C01", "C02")) |>
   subset_subjects(paste0("S00", sprintf("%02d", 1:10)))
 
@@ -59,5 +60,6 @@ events(small)
 ## Model Matrix
 
 ```{r}
-design <- model_frame(pma, t_star = 28, strategy = "last")
+design <- model_frame(emae, t_star = 28, strategy = "last")
+design
 ```

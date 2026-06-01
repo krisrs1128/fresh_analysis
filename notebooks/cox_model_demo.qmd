@@ -1,0 +1,85 @@
+---
+title: "Cox Model Demo"
+execute:
+    message: false
+    warning: false
+---
+
+Load libraries and source necessary files.
+
+```{r setup}
+library(MultiAssayExperiment)
+library(survival)
+library(tidyverse)
+library(yaml)
+library(here)
+library(fs)
+
+tmp <- dir_map(here("src", "data"),   source, type = "file")
+tmp <- dir_map(here("src", "models"), source, type = "file")
+```
+
+Define the event-oriented MAE and show the life table that will be used as the
+response in the cox model.
+
+```{r load-data}
+emae <- from_mae(readRDS(here("data", "example_mae.rds")))
+lt <- life_table(emae, cut_strategy = "visits")
+emae
+```
+
+Read a configuration file. This is just a YAML with arguments for the particular
+model we want to run.
+
+```{r spec}
+spec <- read_spec(here("conf", "models", "coxph_baseline.yml"))
+spec
+```
+
+We can look at the fitted model. The `engine` output is the usual coxph output,
+which can be summarized and plotted as usual.
+
+```{r fit}
+fit <- fit_engine(emae, spec)
+fit
+```
+
+We can make predictions over new trajectories. We'll define the trajectory over
+all timepoints seen in the training data (`fit$cuts`). The survival predictions
+are made for each of those time intervals.
+
+```{r newdata}
+subjects <- colData(emae$mae) |>
+    as_tibble() |>
+    select(study_id, age_at_start) |>
+    slice(1:3)
+
+trajectories <- subjects |>
+    rowwise() |>
+    reframe(constant_trajectory(pick(everything()), fit$cuts))
+
+trajectories
+```
+
+Now that we have trajectories over which we want predictions, we can predict the
+survival probabilities over time.
+
+```{r predict}
+times <- seq(0, max(fit$cuts) * 0.95, length.out = 200)
+S_mat <- predict_survival(fit, newdata = trajectories, times = times)
+```
+
+```{r plot}
+as_tibble(S_mat, rownames = "study_id") |>
+    pivot_longer(-study_id, names_to = "time", values_to = "S") |>
+    mutate(
+        time = as.numeric(time),
+        age_at_start = subjects$age_at_start[match(study_id, subjects$study_id)]
+    ) |>
+    ggplot(aes(time, S, colour = factor(age_at_start), group = study_id)) +
+    geom_line(linewidth = 0.8) +
+    scale_colour_brewer(palette = "Set2", name = "Age at start") +
+    scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
+    labs(x = "Time (days)", y = "S(t | age_at_start)") +
+    theme_minimal(base_size = 13)
+```
