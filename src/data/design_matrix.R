@@ -12,8 +12,8 @@ library(tidyverse)
 
 #' Build a Design Matrix
 #'
-#' Wide table: one row per (study_id) or (study_id, t), binding baseline
-#' characteristics to flattened assay variables. Removes redundant ID columns.
+#' This creates a wide table with one row per (study_id) or (study_id, t).
+#' The columns concatenate the colData and assay features.
 #'
 #' @param view_output MultiAssayExperiment, typically from view().
 #' @return Tibble uniquely identified by (study_id) or

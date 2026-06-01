@@ -10,14 +10,12 @@
 #   impute_covariate_trajectory — forwarded from spec
 #
 # Choices for cut_strategy are:
-#    event_times → fine step function
-#     visits → coarser grid tied to sampling design. The grid travels with the
-#       fit so predict_survival() reconstructs S(t | x) without the original
-#       EventMAE.
+#    event_times → Define intervals with endpoints set to any observed event
+#        time froma cross the entire study.
+#     visits → Define intervals at the visit times for the current subject. It
+#       won't have all the intervals using event times from other subjects.
 
 library(tidyverse)
-
-# ---- public -----------------------------------------------------------------
 
 #' Fit a Piecewise-Exponential (Poisson GLM) Survival Model
 #'
@@ -64,8 +62,6 @@ fit_poisson_interval <- function(
     )
 }
 
-# ---- print ------------------------------------------------------------------
-
 print.fit_pexp <- function(x, ...) {
     cat("fit_pexp\n")
     cat("  engine: pexp (Poisson GLM)\n")
@@ -76,8 +72,6 @@ print.fit_pexp <- function(x, ...) {
     cat("  impute_covariate_trajectory: ", x$impute_covariate_trajectory, "\n")
     invisible(x)
 }
-
-# ---- internal ---------------------------------------------------------------
 
 #' Build Poisson GLM Input Data
 #'

@@ -10,8 +10,6 @@ library(yaml)
 library(here)
 library(fs)
 
-# ---- read -------------------------------------------------------------------
-
 #' Read a Model Spec from YAML
 #'
 #' @param path Path to a YAML file (schema in conf/models/README.md).
@@ -29,8 +27,6 @@ read_spec <- function(path) {
     spec
 }
 
-# ---- dispatch ---------------------------------------------------------------
-
 # Load source files for all fit functions (idempotent via source()).
 load_fit_fns <- function() {
     source(here("src", "models", "fit_coxph.R"))
@@ -39,8 +35,8 @@ load_fit_fns <- function() {
 
 #' Read Spec and Fit
 #'
-#' Forwards every spec key except engine as a named argument to the
-#' engine-specific fit function. No mapping layer.
+#' Passes every spec key except engine as a named argument to the
+#' model/engine-specific fit function.
 #'
 #' @param emae EventMAE object.
 #' @param spec Named list from read_spec().

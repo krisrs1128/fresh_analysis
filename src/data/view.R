@@ -1,7 +1,7 @@
 # view()
 #
 # Filter EventMAE to visits at or before t_star. Adds (study_id, t) to
-# experiment colData to track which rows survive subsetting.
+# experiment colData so we see which intervals are present.
 
 library(MultiAssayExperiment)
 library(SummarizedExperiment)
@@ -9,9 +9,9 @@ library(tidyverse)
 
 # ---- helpers ----------------------------------------------------------------
 
-#' Keep One Sample Per Subject or All Eligible Samples
+#' Keep One Sample per Subject or All Eligible Samples
 #'
-#' Internal wrapper around dplyr::slice_max().
+#' Wraps `slice_max` for the time variable.
 #'
 #' @param eligible_samples Tibble of candidate sample rows.
 #' @param strategy "last" for the most recent visit per subject, or
@@ -31,9 +31,9 @@ apply_strategy <- function(eligible_samples, strategy) {
     )
 }
 
-#' Subset an Experiment, Annotate with Relative Time
+#' Subset an Experiment and Annotate with Relative Time
 #'
-#' Extracts a SummarizedExperiment by sample columns, annotates colData with
+#' Extracts a SummarizedExperiment by sample columns then annotates colData with
 #' study_id and t.
 #'
 #' @param emae EventMAE object.

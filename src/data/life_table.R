@@ -14,8 +14,8 @@ library(tidyverse)
 #' @param events_data Tibble of per-subject event times.
 #' @param visit_table Tibble of observed assay visit times.
 #' @param cut_strategy "visits": split at each subject's own visit
-#'   times. "event_times": split at all observed event times (useful
-#'   for piecewise-exponential models).
+#'   times. "event_times": split at all observed event times, which is useful
+#'   for some semiparametric approaches.
 #' @return Tibble mapping study_id to a list-column of cuts.
 subject_cuts <- function(events_data, visit_table, cut_strategy) {
     if (cut_strategy == "visits") {

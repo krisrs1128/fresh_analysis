@@ -15,8 +15,6 @@
 library(survival)
 library(tidyverse)
 
-# ---- public -----------------------------------------------------------------
-
 #' Fit a Cox Proportional Hazards Model
 #'
 #' @param emae EventMAE object.
@@ -50,8 +48,6 @@ fit_coxph <- function(
     )
 }
 
-# ---- print ------------------------------------------------------------------
-
 print.fit_coxph <- function(x, ...) {
     cat("fit_coxph\n")
     cat("  engine: coxph\n")
@@ -63,8 +59,6 @@ print.fit_coxph <- function(x, ...) {
     cat("  support: [", min(x$cuts), ", ", max(x$cuts), "]\n", sep = "")
     invisible(x)
 }
-
-# ---- internal ---------------------------------------------------------------
 
 #' Build coxph Input Data
 #'

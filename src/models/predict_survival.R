@@ -26,8 +26,6 @@ predict_survival <- function(fit, newdata, times) {
     UseMethod("predict_survival")
 }
 
-# ---- model-specific fitting -------------------------------------------------------
-
 #' Predict S(t | x) from a fit_coxph Object
 #'
 #' Cumulative baseline hazards over trajectory intervals, weighting each
@@ -97,8 +95,6 @@ predict_survival.fit_coxph <- function(fit, newdata, times) {
 #' 2. H(t) = Σ_k lambda_k · (min(t_end_k, t) − t_start_k), t_start_k < t
 #' 3. S_cuts = exp(−H) at cut boundaries; interpolate onto times.
 #'
-#' Stub ensures dispatch chain is complete and fails informatively.
-#'
 #' @param fit fit_pexp object.
 #' @param newdata Covariate trajectory tibble.
 #' @param times Evaluation times.
@@ -106,8 +102,6 @@ predict_survival.fit_coxph <- function(fit, newdata, times) {
 predict_survival.fit_pexp <- function(fit, newdata, times) {
     stop("predict_survival.fit_pexp is not yet implemented.")
 }
-
-# ---- helpers -----------------------------------------------------
 
 #' Build a Constant Trajectory to Predict Baselines
 #'
