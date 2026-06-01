@@ -26,7 +26,7 @@ predict_survival <- function(fit, newdata, times) {
     UseMethod("predict_survival")
 }
 
-# ---- fit_coxph method -------------------------------------------------------
+# ---- model-specific fitting -------------------------------------------------------
 
 #' Predict S(t | x) from a fit_coxph Object
 #'
@@ -89,8 +89,6 @@ predict_survival.fit_coxph <- function(fit, newdata, times) {
     S_mat
 }
 
-# ---- fit_pexp method (stub) -------------------------------------------------
-
 #' Predict S(t | x) from a fit_pexp Object
 #'
 #' Plan:
@@ -109,7 +107,7 @@ predict_survival.fit_pexp <- function(fit, newdata, times) {
     stop("predict_survival.fit_pexp is not yet implemented.")
 }
 
-# ---- trajectory helpers -----------------------------------------------------
+# ---- helpers -----------------------------------------------------
 
 #' Build a Constant Trajectory to Predict Baselines
 #'

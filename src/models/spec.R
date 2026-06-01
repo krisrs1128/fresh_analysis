@@ -1,15 +1,10 @@
 # src/models/spec.R
 #
-# Spec reading, validation, and engine dispatch.
-#
-# A spec is a plain named list from YAML. Validated here, dispatched to an
-# engine-specific fit function.
-#
-# Dispatch contract:
-#   Every key except `engine` must be a named argument of the corresponding
-#   fit function:
-#     do.call(fit_fn, c(list(emae), spec[names(spec) != "engine"]))
-#   No translation layer — drift between key and argument errors on dispatch.
+# A spec is a plain YAML with keys defining the model to fit. The `fit_engine`
+# function wraps specific model fitting definitions from the `models` directory.
+# Every key except `engine` must be a named argument of the corresponding fit
+# function:
+#   do.call(fit_fn, c(list(emae), spec[names(spec) != "engine"]))
 
 library(yaml)
 library(here)
