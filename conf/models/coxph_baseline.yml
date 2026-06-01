@@ -1,8 +1,7 @@
-# Cox proportional hazards — baseline covariates only.
+# Example Cox proportional hazards specification
 #
-# All keys except `engine` are forwarded verbatim as arguments to
+# All keys (except `engine`) are sent to,
 # fit_coxph(emae, formula, time_varying, predict_target).
-# See conf/models/README.md for the full schema.
 
 engine: coxph
 formula: "Surv(t_start, t_end, event) ~ age_at_start"

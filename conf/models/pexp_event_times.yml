@@ -1,8 +1,7 @@
-# Piecewise-exponential (Poisson GLM) — event-time cuts, baseline covariates.
+# Piecewise-exponential (Poisson GLM) over time intervals
 #
-# All keys except `engine` are forwarded verbatim as arguments to
+# All keys (except `engine`) are sent to,
 # fit_poisson_interval(emae, formula, cut_strategy, time_varying, predict_target).
-# See conf/models/README.md for the full schema.
 
 engine: pexp
 formula: "event ~ age_at_start + interval"
