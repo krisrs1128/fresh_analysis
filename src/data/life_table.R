@@ -9,15 +9,14 @@ library(tidyverse)
 ## helper functions
 ###############################################################################
 
-# Partition timess for each subject
-#
-# Inputs:
-#   events_data: Tibble containing final event times per subject.
-#   visit_table: Tibble containing observed visit times for assays.
-#   cut_strategy: 'visits' (split a subject according to visit times) or
-#     'event_times' (split a at all the observed event times in the data, useful
-#     for some types of models).
-# Output: A tibble mapping `study_id` to a list-column of temporal `cuts`.
+#' Partition Times per Subject
+#'
+#' @param events_data Tibble of per-subject event times.
+#' @param visit_table Tibble of observed assay visit times.
+#' @param cut_strategy \code{"visits"}: split at each subject's own visit
+#'   times. \code{"event_times"}: split at all observed event times (useful
+#'   for piecewise-exponential models).
+#' @return Tibble mapping \code{study_id} to a list-column of \code{cuts}.
 subject_cuts <- function(events_data, visit_table, cut_strategy) {
     if (cut_strategy == "visits") {
         return(
@@ -57,16 +56,19 @@ cuts_to_intervals <- function(cuts) {
 
 life_table <- function(emae, ...) UseMethod("life_table")
 
-# Make a long-format table mapping intervals (either between visits or events)
-# to event outcomes.
-#
-# Inputs:
-#   emae: A EventMAE object defining events and visit times.
-#   cut_strategy: Split temporal intervals by 'visits' or 'event_times'.
-# Output: A tibble mapping (study_id) to partitions (t_start, t_end) with
-#   `event_status` determined by whether an event has happened before the
-#   interval started, during the current interval, or whether the subject is
-#   still at risk.
+#' Build a Person-Period Table
+#'
+#' One row per subject-interval. Classifies each interval as containing an
+#' event, at risk with no event, or post-event.
+#'
+#' @param emae EventMAE object.
+#' @param cut_strategy \code{"visits"} or \code{"event_times"}.
+#' @param cuts Optional additional cut points.
+#' @param include_post_event_rows Retain rows after the terminal event
+#'   interval? Default \code{FALSE}.
+#' @return Tibble with columns \code{study_id}, \code{t_start}, \code{t_end},
+#'   \code{event_status} (one of \code{"event_in_interval"},
+#'   \code{"at_risk_no_event"}, \code{"past_event"}).
 life_table.EventMAE <- function(
     emae,
     cut_strategy = c("visits", "event_times"),

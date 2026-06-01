@@ -1,10 +1,7 @@
-# view(emae, t_star, ...)
+# view()
 #
-# Filter or summarize EventMAEs according to a reference time t_star. For
-# example, when `strategy` is 'last', we just keep the last visit before time
-# t_star for each of the MAEs. We add (study_id, t) to the experiment-level
-# colData's so that we retain a memory of which rows from the original
-# experiments are kept.
+# Filter EventMAE to visits at or before t_star. Adds (study_id, t) to
+# experiment colData to track which rows survive subsetting.
 
 library(MultiAssayExperiment)
 library(SummarizedExperiment)
@@ -12,8 +9,14 @@ library(tidyverse)
 
 # ---- helpers ----------------------------------------------------------------
 
-# Keep one column per subject (`last`) or all eligible columns (`all`).
-# Internal wrapper around `dplyr::slice_max()`.
+#' Keep One Sample Per Subject or All Eligible Samples
+#'
+#' Internal wrapper around \code{dplyr::slice_max()}.
+#'
+#' @param eligible_samples Tibble of candidate sample rows.
+#' @param strategy \code{"last"} for the most recent visit per subject, or
+#'   \code{"all"} to retain every eligible visit.
+#' @return Character vector of \code{sample_col} values to retain.
 apply_strategy <- function(eligible_samples, strategy) {
     switch(
         strategy,
@@ -28,10 +31,15 @@ apply_strategy <- function(eligible_samples, strategy) {
     )
 }
 
-# Get an experiment and attach the time-since-enrollment t.
-#
-# Also adds the (study_id, t) information so that we don't loose that context
-# after subsetting.
+#' Subset an Experiment, Annotate with Relative Time
+#'
+#' Extracts a SummarizedExperiment by sample columns, annotates colData with
+#' \code{study_id} and \code{t}.
+#'
+#' @param emae EventMAE object.
+#' @param exp_name Experiment name.
+#' @param sample_cols Sample column names to retain.
+#' @return SummarizedExperiment with \code{study_id} and \code{t} in colData.
 subset_experiment <- function(emae, exp_name, sample_cols) {
     se <- experiments(emae$mae)[[exp_name]][, sample_cols, drop = FALSE]
 
@@ -48,14 +56,19 @@ subset_experiment <- function(emae, exp_name, sample_cols) {
 
 view <- function(emae, ...) UseMethod("view")
 
-# Map each subject to their latest valid assay prior to `t_star`.
-# Returns a subset of an MultiAssayExperiment.
-#
-# Inputs:
-#   emae: A EventMAE object.
-#   t_star: Upper bound on allowed visit times.
-#   strategy: How to reduce multiple observations to a single summary.
-# Output: An MultiAssayExperiment mapping subjects to a filtered assays.
+#' Subset EventMAE to Valid Assay Observations
+#'
+#' Filters each experiment to visits at or before \code{t_star}, then reduces
+#' multiple observations per subject by \code{strategy}.
+#'
+#' @param emae EventMAE object.
+#' @param t_star Upper bound on visit times. Default \code{Inf}.
+#' @param strategy \code{"last"} (most recent visit) or \code{"all"}
+#'   (every eligible visit).
+#' @param summary_fns Not yet implemented.
+#' @param assays Experiments to include. Default: all.
+#' @param drop_post_event Exclude post-event visits? Default \code{TRUE}.
+#' @return MultiAssayExperiment with filtered assays.
 view.EventMAE <- function(
     emae,
     t_star = Inf,

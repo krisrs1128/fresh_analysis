@@ -1,11 +1,9 @@
-# Simulate a toy FRESH-style dataset for PanelMAE development.
+# Simulate a toy FRESH-style dataset for EventMAE development.
 #
-# Schemas for baseline and checkpoint match the column names / types in the
-# project notes. No feature <-> outcome signal is generated; this is purely a
-# pipeline sketch. Call build_example_mae() to assemble everything.
+# Schemas match project notes. No feature–outcome signal; purely a pipeline
+# sketch. Call build_example_mae() to assemble.
 #
 # Usage:
-#   source("src/preprocess/simulate.R")
 #   mae <- build_example_mae(seed = 202605)
 #   saveRDS(mae, "data/example_mae.rds")
 

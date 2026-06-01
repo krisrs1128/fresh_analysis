@@ -1,15 +1,9 @@
 # EventMAE: MultiAssayExperiment for Longitudinal Time Courses
 #
-# This class,
-# - converts dates into relative time from enrollment
-# - distinguishes between event descriptors and visit data.
-#
-# The relative times are standardized according to,
-#
-#   t = (visit_date - enroll_date) / time_unit.
-#
-# Events are stored as (study_id, t_end, event_type). The intent is to simplify
-# survival analysis on MAE objects.
+# Converts dates to relative time from enrollment:
+#   t = (visit_date - enroll_date) / time_unit
+# Events stored as (study_id, t_end, event_type).
+# Simplifies survival analysis on MAE objects.
 
 library(MultiAssayExperiment)
 library(SummarizedExperiment)
@@ -56,7 +50,7 @@ build_visit_table <- function(mae, id_col, enroll_col, visit_time_col,
     })
 }
 
-# Convert event times to standardized relative-to-enrollment units
+# Standardize event times to relative-from-enrollment units
 standardize_event_times <- function(
     events,
     baseline,
@@ -73,8 +67,7 @@ standardize_event_times <- function(
 
     # find the enrollment time
     enroll_time <- baseline |>
-        select(all_of(c(id_col, enroll_col))) |>
-        rename(study_id = all_of(id_col), enroll_time = all_of(enroll_col))
+        select(study_id = all_of(id_col), enroll_time = all_of(enroll_col))
 
     # compute standardized times
     events |>
@@ -109,14 +102,20 @@ validate_visit_times <- function(emae) {
 
 # ---- constructor ------------------------------------------------------------
 
-# Map panel data onto a unified relative scale (time since enrollment)
-#
-# Inputs:
-#   mae: MultiAssayExperiment with baseline colData and assay matrices.
-#   events: Data frame defining (subject, event_time, status) tuples.
-#   *_col, time_unit: Strings specifying column mappings and temporal scaling.
-# Output: A EventMAE object representing the MultiAssayExperiment, event
-#   metadata, and visit table.
+#' Construct an EventMAE Object
+#'
+#' Maps dates to relative time since enrollment, organizing event and visit data
+#' for survival analysis.
+#'
+#' @param mae MultiAssayExperiment with baseline colData and assays.
+#' @param events Data frame: one row per subject with identifier, event time,
+#'   and event status.
+#' @param id_col Subject identifier column name.
+#' @param enroll_col Enrollment date column in baseline colData.
+#' @param visit_time_col Visit date column in experiment colData.
+#' @param time_unit Relative time unit: \code{"days"} or \code{"weeks"}.
+#' @param events_time_col Event date column in \code{events}.
+#' @return EventMAE with standardized event metadata and visit table.
 EventMAE <- function(
     mae,
     events,
